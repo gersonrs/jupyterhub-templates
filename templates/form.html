@@ -1,0 +1,170 @@
+{#
+  KubeSpawner profile form.
+
+  Rendered by c.KubeSpawner via additional_profile_form_template_paths, which
+  is searched before the templates/ directory shipped with kubespawner.
+
+  Two number inputs (CPU and memory) plus one checkbox for the GPU. The number
+  inputs post "profile-option-{profile}--{option}--unlisted-choice", which
+  KubeSpawner validates against validation_regex and substitutes into {value}.
+  The checkbox posts "profile-option-{profile}--gpu" with the "one" choice when
+  checked; when unchecked nothing is sent and the default "none" applies.
+
+  A field only carries a "name" while its value differs from the default, so
+  leaving it untouched lets KubeSpawner apply the declared default choice.
+#}
+<style>
+  #kubespawner-profiles-list .jp-grid {
+    display: grid;
+    gap: 18px;
+    max-width: 440px;
+    margin-top: 12px;
+  }
+  #kubespawner-profiles-list .jp-field > label {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 6px;
+  }
+  #kubespawner-profiles-list .jp-field input[type=number] {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 1em;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+  }
+  #kubespawner-profiles-list .jp-field input[type=number]:invalid {
+    border-color: #c00;
+  }
+  #kubespawner-profiles-list .jp-check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  #kubespawner-profiles-list .jp-check input[type=checkbox] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+  }
+  #kubespawner-profiles-list .jp-check label {
+    font-weight: 600;
+    margin: 0;
+    cursor: pointer;
+  }
+  #kubespawner-profiles-list .jp-hint {
+    font-weight: 400;
+    color: #666;
+    font-size: 0.9em;
+  }
+  #kubespawner-profiles-list .jp-err {
+    color: #c00;
+    font-size: 0.85em;
+    margin-top: 4px;
+    display: none;
+  }
+  #kubespawner-profiles-list .jp-err.show {
+    display: block;
+  }
+</style>
+
+<div class="form-group" id="kubespawner-profiles-list">
+  {%- for profile in profile_list %}
+  <div class="jp-profile" data-profile="{{ profile.slug }}">
+    <input type="radio" name="profile" id="profile-item-{{ profile.slug }}"
+           value="{{ profile.slug }}" {% if profile.default %}checked{% endif %} hidden />
+    {%- if profile.description %}<p>{{ profile.description }}</p>{%- endif %}
+
+    {%- if profile.profile_options %}
+    <div class="jp-grid">
+      {%- for option_key, option in profile.profile_options.items() %}
+      {%- if option_key == 'gpu' %}
+      {%- set gpu_on = namespace(value='') %}
+      {%- for ck, choice in option.choices.items() %}
+        {%- if ck != 'none' %}{% set gpu_on.value = ck %}{% endif %}
+      {%- endfor %}
+      <div class="jp-field jp-check">
+        <input type="checkbox"
+               id="chk-{{ profile.slug }}-gpu"
+               data-field="profile-option-{{ profile.slug }}--gpu"
+               data-value="{{ gpu_on.value }}"
+               class="js-gpu-checkbox" />
+        <label for="chk-{{ profile.slug }}-gpu">
+          {{ option.display_name }}
+          <span class="jp-hint">(marcar para solicitar 1 GPU)</span>
+        </label>
+      </div>
+      {%- else %}
+      {%- set uc = option.unlisted_choice %}
+      {%- set ns = namespace(default='1') %}
+      {%- for ck, choice in option.choices.items() %}
+        {%- if choice.default %}{% set ns.default = ck %}{% endif %}
+      {%- endfor %}
+      <div class="jp-field">
+        <label for="num-{{ profile.slug }}-{{ option_key }}">{{ option.display_name }}</label>
+        <input type="number"
+               id="num-{{ profile.slug }}-{{ option_key }}"
+               data-field="profile-option-{{ profile.slug }}--{{ option_key }}--unlisted-choice"
+               value="{{ ns.default }}"
+               {%- if uc.validation_regex %} pattern="{{ uc.validation_regex }}"{% endif %}
+               {%- if option_key == 'cpu' %} step="0.1" min="0.1"{% else %} step="1" min="1"{% endif %}
+               title="{{ uc.validation_message }}"
+               class="form-control js-num-input" />
+        <div class="jp-err" id="err-{{ profile.slug }}-{{ option_key }}">{{ uc.validation_message }}</div>
+      </div>
+      {%- endif %}
+      {%- endfor %}
+    </div>
+    {%- endif %}
+  </div>
+  {%- endfor %}
+</div>
+
+<script>
+(function () {
+  function selectProfile(el) {
+    var wrap = el.closest('.jp-profile');
+    if (!wrap) { return; }
+    var radio = wrap.querySelector('input[type=radio][name=profile]');
+    if (radio) { radio.checked = true; }
+  }
+
+  // Number inputs: only submit when the value differs from the default, so
+  // KubeSpawner falls back to the declared default choice otherwise.
+  document.querySelectorAll('#kubespawner-profiles-list .js-num-input').forEach(function (input) {
+    var field = input.getAttribute('data-field');
+    function sync() {
+      if (input.value !== '' && input.value !== input.defaultValue) {
+        input.setAttribute('name', field);
+      } else {
+        input.removeAttribute('name');
+      }
+    }
+    function validate() {
+      var err = document.getElementById('err-' + input.id.replace('num-', ''));
+      if (err) { err.classList.toggle('show', !input.checkValidity()); }
+    }
+    sync();
+    input.addEventListener('input', function () { sync(); validate(); });
+    input.addEventListener('blur', validate);
+    input.addEventListener('focus', function () { selectProfile(input); });
+  });
+
+  // GPU checkbox: checked sends the "one" choice, unchecked removes the
+  // "name" so the default "none" (no nvidia.com/gpu request) applies.
+  document.querySelectorAll('#kubespawner-profiles-list .js-gpu-checkbox').forEach(function (cb) {
+    var field = cb.getAttribute('data-field');
+    var value = cb.getAttribute('data-value');
+    function sync() {
+      if (cb.checked) {
+        cb.setAttribute('name', field);
+        cb.setAttribute('value', value);
+      } else {
+        cb.removeAttribute('name');
+        cb.removeAttribute('value');
+      }
+    }
+    sync();
+    cb.addEventListener('change', function () { sync(); selectProfile(cb); });
+  });
+})();
+</script>
