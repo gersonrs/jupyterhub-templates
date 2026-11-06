@@ -36,6 +36,14 @@
   #kubespawner-profiles-list .jp-field input[type=number]:invalid {
     border-color: #c00;
   }
+  #kubespawner-profiles-list .jp-field select {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 1em;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+  }
   #kubespawner-profiles-list .jp-check {
     display: flex;
     align-items: center;
@@ -77,7 +85,19 @@
     {%- if profile.profile_options %}
     <div class="jp-grid">
       {%- for option_key, option in profile.profile_options.items() %}
-      {%- if option_key == 'gpu' %}
+      {%- if option_key == 'group' %}
+      <div class="jp-field">
+        <label for="sel-{{ profile.slug }}-group">{{ option.display_name }}</label>
+        <select id="sel-{{ profile.slug }}-group"
+                name="profile-option-{{ profile.slug }}--group"
+                class="form-control js-group-select">
+          {%- for choice_key, choice in option.choices.items() %}
+          <option value="{{ choice_key }}" {% if choice.default %}selected{% endif %}>{{ choice.display_name }}</option>
+          {%- endfor %}
+        </select>
+        {%- if option.description %}<div class="jp-hint">{{ option.description }}</div>{% endif %}
+      </div>
+      {%- elif option_key == 'gpu' %}
       {%- set gpu_on = namespace(value='') %}
       {%- for ck, choice in option.choices.items() %}
         {%- if ck != 'none' %}{% set gpu_on.value = ck %}{% endif %}
@@ -147,6 +167,13 @@
     input.addEventListener('input', function () { sync(); validate(); });
     input.addEventListener('blur', validate);
     input.addEventListener('focus', function () { selectProfile(input); });
+  });
+
+  // The group <select> always carries a "name", so the chosen group is always
+  // submitted, including when the user leaves the first option selected.
+  document.querySelectorAll('#kubespawner-profiles-list .js-group-select').forEach(function (sel) {
+    sel.addEventListener('change', function () { selectProfile(sel); });
+    sel.addEventListener('focus', function () { selectProfile(sel); });
   });
 
   // GPU checkbox: checked sends the "one" choice, unchecked removes the
