@@ -1,0 +1,10 @@
+.git
+.github
+.gitignore
+*.Rproj
+.Rproj.user
+.DS_Store
+login_old.html
+README.md
+Dockerfile
+.dockerignore
